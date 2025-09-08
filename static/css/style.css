@@ -1,17 +1,264 @@
 :root {
     --light: #f0d9b5;
-    --dark:  #b58863;
-    --dot:   #32c832;
+    --dark: #b58863;
+    --dot: #333333; /* Darker gray for legal move circles */
     --sq: 64px;
+    --highlight: #555555; /* Dark gray for selected square */
+    --button-bg: #8b4513; /* Saddle brown for buttons */
+    --button-hover: #d2b48c; /* Tan for button hover */
 }
-body { display:flex; justify-content:center; align-items:center; height:100vh; background:#111; margin:0; font-family:sans-serif; }
-.board-wrap { display:flex; flex-direction:column; align-items:center; }
-.board { display:grid; grid-template-columns:repeat(8,var(--sq)); grid-template-rows:repeat(8,var(--sq)); border:4px solid #222; }
-.square { width: var(--sq); height: var(--sq); position:relative; }
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(#222, #111);
+    margin: 0;
+    font-family: 'Roboto', sans-serif;
+}
+
+#pre-game {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #eee;
+    background: #222;
+    padding: 20px;
+    border: 4px solid #444;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+#pre-game h2 { margin-bottom: 10px; font-weight: 700; }
+#pre-game select, #pre-game button {
+    margin: 5px;
+    padding: 8px 12px;
+    font-size: 16px;
+    background: var(--button-bg);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s, transform 0.2s;
+}
+#pre-game button:hover {
+    background: var(--button-hover);
+    transform: scale(1.05);
+}
+#pre-game #error-msg { margin-top: 10px; }
+#pre-game #loading { margin-top: 10px; }
+
+#board-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 100%;
+    margin: 20px;
+}
+
+.board {
+    display: grid;
+    grid-template-columns: repeat(8, var(--sq));
+    grid-template-rows: repeat(8, var(--sq));
+    border: 8px solid #444;
+    max-width: calc(8 * var(--sq));
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.square {
+    width: var(--sq);
+    height: var(--sq);
+    position: relative;
+    transition: transform 0.2s;
+}
+
+.square:hover {
+    transform: scale(1.05);
+}
+
 .square.light { background: var(--light); }
-.square.dark  { background: var(--dark); }
-.square .piece { width:100%; height:100%; }
-.square .dot { width:12px; height:12px; background: var(--dot); border-radius:50%; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); }
-.status { margin-top:10px; color:#eee; }
-.controls { margin-top:10px; }
-button { margin:0 5px; padding:5px 10px; font-size:14px; }
+.square.dark { background: var(--dark); }
+.square .piece {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    transition: transform 0.2s;
+}
+.square .piece:hover {
+    transform: scale(1.05);
+}
+.square .dot {
+    width: 20px;
+    height: 20px;
+    background: var(--dot);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    50% { transform: translate(-50%, -50%) scale(1.1); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+.status {
+    margin-top: 10px;
+    color: #eee;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.top-left, .top-right, .bottom-left, .bottom-right {
+    display: none; /* Hidden until game starts */
+    animation: fadeIn 0.5s ease-in;
+}
+
+.top-left {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 10;
+}
+
+#menu-btn {
+    padding: 8px 12px;
+    background: var(--button-bg);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s, transform 0.2s;
+}
+
+#menu-btn:hover {
+    background: var(--button-hover);
+    transform: scale(1.05);
+}
+
+#menu {
+    background: #222;
+    border: 2px solid #444;
+    padding: 10px;
+    position: fixed;
+    top: 40px;
+    left: 10px;
+    z-index: 10;
+    border-radius: 4px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.3s ease-in;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+#menu button {
+    display: block;
+    width: 100px;
+    margin: 5px 0;
+    padding: 8px;
+    background: var(--button-bg);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s, transform 0.2s;
+}
+
+#menu button:hover {
+    background: var(--button-hover);
+    transform: scale(1.05);
+}
+
+.top-right {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    color: #eee;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.bottom-left {
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+}
+
+#undo-btn {
+    padding: 8px 12px;
+    background: var(--button-bg);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    border-radius: 4px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: background 0.3s, transform 0.2s;
+}
+
+#undo-btn:hover {
+    background: var(--button-hover);
+    transform: scale(1.05);
+}
+
+.bottom-right {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    color: #eee;
+    font-size: 16px;
+    max-width: 200px;
+    font-weight: 700;
+}
+
+.selected {
+    background: var(--highlight) !important;
+    border: 2px solid #333;
+}
+
+.possible {
+    position: relative;
+}
+
+.possible::after {
+    content: '';
+    width: 20px;
+    height: 20px;
+    background: var(--dot);
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0.9;
+}
+
+@media (max-width: 600px) {
+    :root { --sq: 40px; }
+    .board { max-width: calc(8 * var(--sq)); }
+    #menu, #menu-btn, #undo-btn, .top-right, .bottom-right { font-size: 14px; }
+    #menu { width: 80px; }
+    #menu button { width: 80px; }
+}
