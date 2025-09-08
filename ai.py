@@ -1,5 +1,6 @@
 import chess
 import math
+import random
 
 PIECE_VALUES = {
     chess.PAWN: 100,
@@ -31,10 +32,46 @@ psqt = {
         -73, -41, 72, 36, 23, 62, 7, -17,
         -167, -89, -34, -49, 61, -97, -15, -107
     ],
-    chess.BISHOP: [0] * 64,
-    chess.ROOK: [0] * 64,
-    chess.QUEEN: [0] * 64,
-    chess.KING: [0] * 64
+    chess.BISHOP: [
+        -20,-10,-10,-10,-10,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5, 10, 10,  5,  0,-10,
+        -10,  5,  5, 10, 10,  5,  5,-10,
+        -10,  0, 10, 10, 10, 10,  0,-10,
+        -10, 10, 10,  0,  0, 10, 10,-10,
+        -10,  5,  0,  0,  0,  0,  5,-10,
+        -20,-10,-10,-10,-10,-10,-10,-20
+    ],
+    chess.ROOK: [
+         0,  0,  0,  0,  0,  0,  0,  0,
+         5, 10, 10, 10, 10, 10, 10,  5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+        -5,  0,  0,  0,  0,  0,  0, -5,
+         0, 10, 10, 10, 10, 10, 10,  0
+    ],
+    chess.QUEEN: [
+        -20,-10,-10, -5, -5,-10,-10,-20,
+        -10,  0,  0,  0,  0,  0,  0,-10,
+        -10,  0,  5,  5,  5,  5,  0,-10,
+         -5,  0,  5,  5,  5,  5,  0, -5,
+          0,  0,  5,  5,  5,  5,  0, -5,
+        -10,  5,  5,  5,  5,  5,  0,-10,
+        -10,  0,  5,  0,  0,  0,  0,-10,
+        -20,-10,-10, -5, -5,-10,-10,-20
+    ],
+    chess.KING: [
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -30,-40,-40,-50,-50,-40,-40,-30,
+        -20,-30,-30,-40,-40,-30,-30,-20,
+        -10,-20,-20,-20,-20,-20,-20,-10,
+         10, 10,-10,-10,-10,-10, 10, 10,
+         20, 30, 10,  0,  0, 10, 30, 20
+    ]
 }
 
 def evaluate_board(board: chess.Board) -> int:
@@ -57,17 +94,95 @@ def evaluate_board(board: chess.Board) -> int:
             psqt_score += psqt_val if p.color == chess.WHITE else -psqt_val
     score += psqt_score
 
+    # Center control bonus
+    center_squares = [chess.D4, chess.D5, chess.E4, chess.E5]
+    for sq in center_squares:
+        piece = board.piece_at(sq)
+        if piece:
+            score += 10 if piece.color == chess.WHITE else -10
+
+    # King safety
+    for color in [chess.WHITE, chess.BLACK]:
+        king_square = board.king(color)
+        if king_square is not None:
+            attackers = len(board.attackers(not color, king_square))
+            protectors = len(board.attackers(color, king_square))
+            safety = protectors - attackers
+            score += safety * 10 if color == chess.WHITE else -safety * 10
+
+    # Pawn structure
+    for file in range(8):
+        white_pawns = []
+        black_pawns = []
+        for rank in range(8):
+            square = file + rank * 8
+            piece = board.piece_at(square)
+            if piece and piece.piece_type == chess.PAWN:
+                if piece.color == chess.WHITE:
+                    white_pawns.append(square)
+                else:
+                    black_pawns.append(square)
+        # Reward connected pawns
+        if len(white_pawns) >= 2:
+            score += 10 * (len(white_pawns) - 1)
+        if len(black_pawns) >= 2:
+            score -= 10 * (len(black_pawns) - 1)
+        # Penalize isolated pawns
+        for pawn_sq in white_pawns:
+            pawn_file = pawn_sq % 8
+            is_isolated = True
+            if pawn_file > 0:
+                for rank in range(8):
+                    if board.piece_at((pawn_file - 1) + rank * 8) == chess.Piece(chess.PAWN, chess.WHITE):
+                        is_isolated = False
+                        break
+            if pawn_file < 7:
+                for rank in range(8):
+                    if board.piece_at((pawn_file + 1) + rank * 8) == chess.Piece(chess.PAWN, chess.WHITE):
+                        is_isolated = False
+                        break
+            if is_isolated:
+                score -= 20
+        for pawn_sq in black_pawns:
+            pawn_file = pawn_sq % 8
+            is_isolated = True
+            if pawn_file > 0:
+                for rank in range(8):
+                    if board.piece_at((pawn_file - 1) + rank * 8) == chess.Piece(chess.PAWN, chess.BLACK):
+                        is_isolated = False
+                        break
+            if pawn_file < 7:
+                for rank in range(8):
+                    if board.piece_at((pawn_file + 1) + rank * 8) == chess.Piece(chess.PAWN, chess.BLACK):
+                        is_isolated = False
+                        break
+            if is_isolated:
+                score += 20
+
     return -score if board.turn == chess.BLACK else score
 
 def order_moves(board: chess.Board, moves):
     def score(m):
         s = 0
+        # Favor captures
         if board.is_capture(m):
             victim = board.piece_at(m.to_square)
             if victim:
                 s += PIECE_VALUES.get(victim.piece_type, 0)
+        # Promotion bonus
         if m.promotion:
             s += 800
+        # Opening strategy (first 4 moves)
+        if len(board.move_stack) < 4:
+            central_pawn_moves = ['e2e4', 'd2d4', 'e7e5', 'd7d5']
+            knight_moves = ['g1f3', 'b1c3', 'g8f6', 'b8c6']
+            queen_moves = [m.uci() for m in moves if board.piece_at(m.from_square) and board.piece_at(m.from_square).piece_type == chess.QUEEN]
+            if m.uci() in central_pawn_moves:
+                s += 100
+            elif m.uci() in knight_moves:
+                s += 50
+            elif m.uci() in queen_moves:
+                s -= 50
         return -s
     return sorted(moves, key=score)
 
@@ -103,7 +218,7 @@ def best_move(board: chess.Board, depth: int = 3):
     
     maximizing = board.turn == chess.WHITE
     best_val = -math.inf if maximizing else math.inf
-    best_mv = None
+    best_moves = []
     
     legal_moves = order_moves(board, list(board.legal_moves))
     
@@ -111,10 +226,15 @@ def best_move(board: chess.Board, depth: int = 3):
         board.push(mv)
         val = alphabeta(board, depth - 1, -math.inf, math.inf, not maximizing)
         board.pop()
-
-        if maximizing and val > best_val:
-            best_val, best_mv = val, mv
-        elif not maximizing and val < best_val:
-            best_val, best_mv = val, mv
+        if maximizing:
+            if val > best_val:
+                best_val, best_moves = val, [mv]
+            elif val == best_val:
+                best_moves.append(mv)
+        else:
+            if val < best_val:
+                best_val, best_moves = val, [mv]
+            elif val == best_val:
+                best_moves.append(mv)
     
-    return best_mv
+    return random.choice(best_moves) if best_moves else None
