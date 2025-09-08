@@ -1,19 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Chess AI Web</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <meta charset="utf-8">
+    <title>Chess AI Web</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
-<div class="board-wrap">
-    <div id="board" class="board"></div>
-    <div class="status" id="status">White to move</div>
-    <div class="controls">
-        <button onclick="resetBoard()">New Game</button>
-        <button onclick="undoMove()">Undo</button>
+    <div id="pre-game">
+        <h2>Choose Difficulty:</h2>
+        <select id="difficulty" aria-label="Select game difficulty">
+            <option value="easy">Easy</option>
+            <option value="medium" selected>Medium</option>
+            <option value="hard">Hard</option>
+        </select>
+        <button onclick="startGame()" aria-label="Start new game">Start Game</button>
+        <div id="error-msg" style="color:red;"></div>
+        <div id="loading" style="display:none; color:#eee;">Loading...</div>
     </div>
-</div>
-<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <div id="board-wrap">
+        <div id="board" class="board" role="grid" aria-label="Chessboard"></div>
+        <div class="status" id="status">White to move</div>
+    </div>
+    <div class="top-left" id="top-left">
+        <button id="menu-btn" aria-label="Toggle menu">Menu</button>
+        <div id="menu" style="display:none;">
+            <button onclick="resetBoard()" aria-label="Start new game">New Game</button>
+            <button id="pause-btn" onclick="togglePause()" aria-label="Pause or resume game">Pause</button>
+            <button onclick="quitGame()" aria-label="Quit game">Quit</button>
+        </div>
+    </div>
+    <div class="top-right" id="top-right">
+        Timer: <span id="timer" aria-live="polite">00:00</span>
+    </div>
+    <div class="bottom-left" id="bottom-left">
+        <button id="undo-btn" onclick="undoMove()" aria-label="Undo last move">Undo</button>
+    </div>
+    <div class="bottom-right" id="bottom-right">
+        Last Move: <span id="last-move" aria-live="polite"></span>
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html>
