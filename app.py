@@ -19,14 +19,18 @@ def board_to_dict(board):
     return d
 
 def get_move_str(move):
-    piece = board.piece_at(move.from_square)
-    if piece:
-        piece_name = chess.PIECE_NAMES[piece.piece_type].capitalize()
-        color = "White" if piece.color == chess.WHITE else "Black"
-        from_name = chess.square_name(move.from_square)
-        to_name = chess.square_name(move.to_square)
-        return f"{color} {piece_name} from {from_name} to {to_name}"
-    return ""
+    try:
+        piece = board.piece_at(move.from_square)
+        if piece:
+            piece_name = chess.PIECE_NAMES[piece.piece_type].capitalize()
+            color = "White" if piece.color == chess.WHITE else "Black"
+            from_name = chess.square_name(move.from_square)
+            to_name = chess.square_name(move.to_square)
+            return f"{color} {piece_name} from {from_name} to {to_name}"
+        return ""
+    except Exception as e:
+        logger.error(f"Error in get_move_str: {e}")
+        return ""
 
 @app.route("/")
 def index():
@@ -41,6 +45,7 @@ def move():
     to_sq = data.get("to")
     
     if from_sq is None or to_sq is None:
+        logger.warning("Missing from or to square")
         return jsonify({"error": "Missing from or to square"}), 400
     
     move = chess.Move(from_sq, to_sq)
@@ -53,13 +58,28 @@ def move():
     if move in board.legal_moves:
         player_move_str = get_move_str(move)
         board.push(move)
+        logger.debug("Player move: %s", player_move_str)
         ai_move_str = ""
         if not board.is_game_over():
-            ai_mv = best_move(board, depth=AI_DEPTH)
-            if ai_mv:
-                ai_move_str = get_move_str(ai_mv)
-                board.push(ai_mv)
-        return jsonify({"board": board_to_dict(board), "status": board_status(), "player_move": player_move_str, "ai_move": ai_move_str})
+            try:
+                ai_mv = best_move(board, depth=AI_DEPTH)
+                if ai_mv:
+                    ai_move_str = get_move_str(ai_mv)
+                    board.push(ai_mv)
+                    logger.debug("AI move: %s", ai_move_str)
+                else:
+                    logger.error("AI returned no move")
+                    return jsonify({"error": "AI failed to make a move"}), 500
+            except Exception as e:
+                logger.error("AI move error: %s", e)
+                return jsonify({"error": f"AI move error: {str(e)}"}), 500
+        return jsonify({
+            "board": board_to_dict(board),
+            "status": board_status(),
+            "player_move": player_move_str,
+            "ai_move": ai_move_str
+        })
+    logger.warning("Illegal move attempted: %s", move.uci())
     return jsonify({"error": "Illegal move"}), 400
 
 @app.route("/start", methods=["POST"])
@@ -82,26 +102,44 @@ def start():
 @app.route("/reset", methods=["POST"])
 def reset():
     global board
-    board.reset()
-    return jsonify({"board": board_to_dict(board), "status": board_status(), "player_move": "", "ai_move": ""})
+    try:
+        board.reset()
+        logger.debug("Board reset")
+        return jsonify({"board": board_to_dict(board), "status": board_status(), "player_move": "", "ai_move": ""})
+    except Exception as e:
+        logger.error("Reset error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/undo", methods=["POST"])
 def undo():
     global board
-    if board.move_stack:
-        board.pop()
-    if board.move_stack:
-        board.pop()
-    return jsonify({"board": board_to_dict(board), "status": board_status(), "player_move": "", "ai_move": ""})
+    try:
+        if not board.move_stack:
+            logger.debug("No moves to undo")
+            return jsonify({"error": "No moves to undo"}), 400
+        board.pop()  # Undo AI move
+        if board.move_stack:
+            board.pop()  # Undo player move
+        logger.debug("Undo successful, status: %s", board_status())
+        return jsonify({"board": board_to_dict(board), "status": board_status(), "player_move": "", "ai_move": ""})
+    except Exception as e:
+        logger.error("Undo error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/legal_moves", methods=["POST"])
 def legal_moves():
-    data = request.get_json()
-    from_sq = data.get("from")
-    if from_sq is None:
-        return jsonify({"error": "Missing from square"}), 400
-    moves = [m.to_square for m in board.legal_moves if m.from_square == from_sq]
-    return jsonify({"moves": moves})
+    try:
+        data = request.get_json()
+        from_sq = data.get("from")
+        if from_sq is None:
+            logger.warning("Missing from square")
+            return jsonify({"error": "Missing from square"}), 400
+        moves = [m.to_square for m in board.legal_moves if m.from_square == from_sq]
+        logger.debug("Legal moves for %s: %s", from_sq, moves)
+        return jsonify({"moves": moves})
+    except Exception as e:
+        logger.error("Legal moves error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 def board_status():
     if board.is_checkmate():
@@ -110,8 +148,13 @@ def board_status():
         return "Stalemate"
     elif board.is_check():
         return "Check!"
-    else:
-        return "White to move" if board.turn == chess.WHITE else "Black to move"
+    elif board.is_insufficient_material():
+        return "Insufficient material: Draw"
+    elif board.can_claim_threefold_repetition():
+        return "Threefold repetition: Draw"
+    elif board.can_claim_fifty_moves():
+        return "Fifty-move rule: Draw"
+    return "White to move" if board.turn == chess.WHITE else "Black to move"
 
 if __name__ == "__main__":
     app.run(debug=True)
