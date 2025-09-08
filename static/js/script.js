@@ -27,6 +27,8 @@ function createBoard(boardDict) {
             sqDiv.classList.add("square");
             sqDiv.classList.add((r + f) % 2 === 0 ? "light" : "dark");
             sqDiv.dataset.sq = sqIndex;
+            sqDiv.setAttribute("tabindex", "0");
+            sqDiv.setAttribute("aria-label", `Square ${indexToAlgebraic(sqIndex)}`);
 
             if (boardDict[sqIndex]) {
                 const img = document.createElement("img");
@@ -35,6 +37,7 @@ function createBoard(boardDict) {
                 img.src = `/static/pieces/${pieceColor}pieces/${pieceSymbol.toLowerCase()}.png`;
                 img.alt = `${pieceColor}${pieceSymbol}`;
                 img.classList.add("piece");
+                img.draggable = true;
                 img.onerror = () => {
                     console.error("Image load failed for:", img.src);
                     img.src = "/static/pieces/default.png";
@@ -42,19 +45,31 @@ function createBoard(boardDict) {
                 sqDiv.appendChild(img);
             }
             sqDiv.addEventListener("click", () => onSquareClick(sqIndex));
+            sqDiv.addEventListener("dragstart", (e) => onDragStart(e, sqIndex));
+            sqDiv.addEventListener("dragover", (e) => e.preventDefault());
+            sqDiv.addEventListener("drop", (e) => onDrop(e, sqIndex));
+            sqDiv.addEventListener("touchstart", (e) => onTouchStart(e, sqIndex));
+            sqDiv.addEventListener("touchmove", (e) => onTouchMove(e));
+            sqDiv.addEventListener("touchend", (e) => onTouchEnd(e, sqIndex));
+            sqDiv.addEventListener("keydown", (e) => onKeyDown(e, sqIndex));
             boardDiv.appendChild(sqDiv);
         }
     }
     loadingDiv.style.display = "none";
 }
 
+function indexToAlgebraic(index) {
+    const file = String.fromCharCode(97 + (index % 8));
+    const rank = 8 - Math.floor(index / 8);
+    return `${file}${rank}`;
+}
+
 async function onSquareClick(sq) {
     if (isPaused || isGameOver) return;
-
+    console.log("Square clicked:", sq);
     if (selectedSquare === null) {
-        // Select source square
         const piece = document.querySelector(`[data-sq="${sq}"] img.piece`);
-        if (!piece) return; // No piece on this square
+        if (!piece) return;
         selectedSquare = sq;
         document.querySelectorAll(".selected, .possible").forEach(el => {
             el.classList.remove("selected", "possible");
@@ -70,6 +85,7 @@ async function onSquareClick(sq) {
             if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
             const data = await res.json();
             if (data.error) throw new Error(data.error);
+            console.log("Legal moves:", data.moves);
             data.moves.forEach(m => {
                 const possibleEl = document.querySelector(`[data-sq="${m}"]`);
                 if (possibleEl) possibleEl.classList.add("possible");
@@ -80,18 +96,90 @@ async function onSquareClick(sq) {
             selectedSquare = null;
         }
     } else {
-        // Attempt move to destination square
         await makeMove(sq);
     }
 }
 
-async function makeMove(toSquare) {
-    if (isPaused || isGameOver || selectedSquare === null) return;
+function onDragStart(e, sq) {
+    if (isPaused || isGameOver) return;
+    const piece = document.querySelector(`[data-sq="${sq}"] img.piece`);
+    if (!piece) return;
+    console.log("Drag start:", sq);
+    e.dataTransfer.setData("text/plain", sq.toString());
+    piece.classList.add("dragging");
+    selectedSquare = sq;
+    onSquareClick(sq);
+}
+
+function onDrop(e, toSquare) {
+    e.preventDefault();
+    const fromSquare = parseInt(e.dataTransfer.getData("text/plain"));
+    document.querySelectorAll(".dragging").forEach(el => el.classList.remove("dragging"));
+    console.log("Drop: from %s to %s", fromSquare, toSquare);
+    if (fromSquare !== toSquare) {
+        makeMove(toSquare, fromSquare);
+    }
+}
+
+let touchStartSquare = null;
+function onTouchStart(e, sq) {
+    if (isPaused || isGameOver) return;
+    const piece = document.querySelector(`[data-sq="${sq}"] img.piece`);
+    if (!piece) return;
+    console.log("Touch start:", sq);
+    touchStartSquare = sq;
+    piece.classList.add("dragging");
+    onSquareClick(sq);
+}
+
+function onTouchMove(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const element = document.elementFromPoint(touch.clientX, touch.clientY);
+    document.querySelectorAll(".hover").forEach(el => el.classList.remove("hover"));
+    if (element && element.classList.contains("square")) {
+        element.classList.add("hover");
+    }
+}
+
+function onTouchEnd(e, toSquare) {
+    document.querySelectorAll(".dragging").forEach(el => el.classList.remove("dragging"));
+    document.querySelectorAll(".hover").forEach(el => el.classList.remove("hover"));
+    console.log("Touch end:", toSquare);
+    if (touchStartSquare !== null && touchStartSquare !== toSquare) {
+        makeMove(toSquare, touchStartSquare);
+    }
+    touchStartSquare = null;
+}
+
+function onKeyDown(e, sq) {
+    if (isPaused || isGameOver) return;
+    const file = sq % 8;
+    const rank = Math.floor(sq / 8);
+    let newSquare = sq;
+    if (e.key === "ArrowUp" && rank < 7) newSquare = (rank + 1) * 8 + file;
+    if (e.key === "ArrowDown" && rank > 0) newSquare = (rank - 1) * 8 + file;
+    if (e.key === "ArrowLeft" && file > 0) newSquare = rank * 8 + (file - 1);
+    if (e.key === "ArrowRight" && file < 7) newSquare = rank * 8 + (file + 1);
+    if (e.key === "Enter") {
+        onSquareClick(sq);
+        return;
+    }
+    if (newSquare !== sq) {
+        console.log("Keyboard move to:", newSquare);
+        const newEl = document.querySelector(`[data-sq="${newSquare}"]`);
+        if (newEl) newEl.focus();
+    }
+}
+
+async function makeMove(toSquare, fromSquare = selectedSquare) {
+    if (isPaused || isGameOver || fromSquare === null) return;
+    console.log("Making move: from %s to %s", fromSquare, toSquare);
     try {
         const res = await fetch("/move", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ from: selectedSquare, to: toSquare })
+            body: JSON.stringify({ from: fromSquare, to: toSquare })
         });
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
         const data = await res.json();
@@ -102,11 +190,11 @@ async function makeMove(toSquare) {
         createBoard(data.board);
         statusDiv.innerText = data.status || "Game in progress";
         let lm = data.player_move || "";
-        if (data.ai_move) lm += "\n" + data.ai_move;
+        if (data.ai_move) lm += " | " + data.ai_move;
         document.getElementById("last-move").innerText = lm || "No moves yet";
         selectedSquare = null;
-        // Check for game over
-        if (data.status.includes("Checkmate") || data.status.includes("Stalemate")) {
+        if (data.status.includes("Checkmate") || data.status.includes("Stalemate") ||
+            data.status.includes("Draw")) {
             isGameOver = true;
             clearInterval(timerInterval);
             timerInterval = null;
@@ -114,7 +202,6 @@ async function makeMove(toSquare) {
     } catch (error) {
         console.error("Move error:", error);
         errorMsgDiv.innerText = `Move error: ${error.message}`;
-        // Clear selection on invalid move
         document.querySelectorAll(".selected, .possible").forEach(el => {
             el.classList.remove("selected", "possible");
         });
@@ -140,7 +227,7 @@ async function resetBoard() {
         gameTime = 0;
         document.getElementById("timer").innerText = "00:00";
         startTimer();
-        document.getElementById("menu").style.display = "none"; // Close menu
+        document.getElementById("menu").style.display = "none";
     } catch (error) {
         console.error("Reset error:", error);
         errorMsgDiv.innerText = `Reset error: ${error.message}`;
@@ -148,18 +235,18 @@ async function resetBoard() {
 }
 
 async function quitGame() {
-    if (isPaused) togglePause(); // Resume to allow quitting
+    if (isPaused) togglePause();
     try {
-        errorMsgDiv.innerText = ""; // Clear any existing errors
+        errorMsgDiv.innerText = "";
         const res = await fetch("/reset", { method: "POST" });
         if (!res.ok) {
             console.error(`Reset failed: HTTP status ${res.status}`);
-            return; // Don't show error on pre-game screen
+            return;
         }
         const data = await res.json();
         if (data.error) {
             console.error("Reset error:", data.error);
-            return; // Don't show error on pre-game screen
+            return;
         }
         document.getElementById("board-wrap").style.display = "none";
         document.getElementById("pre-game").style.display = "flex";
@@ -181,7 +268,6 @@ async function quitGame() {
         });
     } catch (error) {
         console.error("Quit error:", error);
-        // Don't show error on pre-game screen
     }
 }
 
