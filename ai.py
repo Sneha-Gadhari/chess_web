@@ -10,6 +10,33 @@ PIECE_VALUES = {
     chess.KING: 20000
 }
 
+psqt = {
+    chess.PAWN: [
+        0, 0, 0, 0, 0, 0, 0, 0,
+        -35, -1, -20, -23, -15, 24, 38, -22,
+        -26, -4, -4, -10, 3, 3, 33, -12,
+        -27, -2, -5, 12, 17, 6, 10, -25,
+        -14, 13, 6, 21, 23, 12, 17, -23,
+        -6, 7, 26, 31, 65, 56, 25, -20,
+        98, 134, 61, 95, 68, 126, 34, -11,
+        0, 0, 0, 0, 0, 0, 0, 0
+    ],
+    chess.KNIGHT: [
+        -105, -21, -58, -33, -17, -28, -19, -23,
+        -29, -53, -12, -3, -1, 18, -14, -19,
+        -23, -9, 12, 10, 19, 17, 25, -16,
+        -13, 4, 16, 13, 28, 19, 21, -8,
+        -9, 17, 19, 53, 37, 69, 18, 22,
+        -47, 60, 37, 65, 84, 129, 73, 44,
+        -73, -41, 72, 36, 23, 62, 7, -17,
+        -167, -89, -34, -49, 61, -97, -15, -107
+    ],
+    chess.BISHOP: [0] * 64,
+    chess.ROOK: [0] * 64,
+    chess.QUEEN: [0] * 64,
+    chess.KING: [0] * 64
+}
+
 def evaluate_board(board: chess.Board) -> int:
     if board.is_checkmate():
         return 99999 if board.turn == chess.WHITE else -99999
@@ -21,10 +48,16 @@ def evaluate_board(board: chess.Board) -> int:
         score += val * len(board.pieces(pt, chess.WHITE))
         score -= val * len(board.pieces(pt, chess.BLACK))
     
-    if board.turn == chess.BLACK:
-        return -score
-    else:
-        return score
+    psqt_score = 0
+    for sq in chess.SQUARES:
+        p = board.piece_at(sq)
+        if p:
+            table = psqt.get(p.piece_type, [0] * 64)
+            psqt_val = table[sq] if p.color == chess.WHITE else table[sq ^ 56]
+            psqt_score += psqt_val if p.color == chess.WHITE else -psqt_val
+    score += psqt_score
+
+    return -score if board.turn == chess.BLACK else score
 
 def order_moves(board: chess.Board, moves):
     def score(m):
@@ -76,15 +109,12 @@ def best_move(board: chess.Board, depth: int = 3):
     
     for mv in legal_moves:
         board.push(mv)
-        # We need to pass the initial alpha and beta values and whether to maximize for the recursive call
         val = alphabeta(board, depth - 1, -math.inf, math.inf, not maximizing)
         board.pop()
 
-        if maximizing:
-            if val > best_val:
-                best_val, best_mv = val, mv
-        else:
-            if val < best_val:
-                best_val, best_mv = val, mv
+        if maximizing and val > best_val:
+            best_val, best_mv = val, mv
+        elif not maximizing and val < best_val:
+            best_val, best_mv = val, mv
     
     return best_mv
